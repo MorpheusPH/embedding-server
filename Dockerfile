@@ -1,6 +1,8 @@
 # Rust builder
-FROM lukemathwalker/cargo-chef:latest-rust-1.69 AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.70 AS chef
 WORKDIR /usr/src
+
+ARG CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
 FROM chef as planner
 COPY Cargo.toml Cargo.toml
@@ -37,7 +39,7 @@ RUN cargo build --release
 # Adapted from: https://github.com/pytorch/pytorch/blob/master/Dockerfile
 FROM debian:bullseye-slim as pytorch-install
 
-ARG PYTORCH_VERSION=2.0.0
+ARG PYTORCH_VERSION=2.0.1
 ARG PYTHON_VERSION=3.9
 ARG CUDA_VERSION=11.8
 ARG MAMBA_VERSION=23.1.0-1
@@ -87,16 +89,6 @@ RUN /opt/conda/bin/conda install -c "nvidia/label/cuda-11.8.0"  cuda==11.8 && \
     /opt/conda/bin/conda clean -ya
 
 
-# Build Flash Attention CUDA kernels
-FROM kernel-builder as flash-att-builder
-
-WORKDIR /usr/src
-
-COPY server/Makefile-flash-att Makefile
-
-# Build specific version of flash attention
-RUN make build-flash-attention
-
 # Text Generation Inference base image
 FROM nvidia/cuda:11.8.0-base-ubuntu20.04 as base
 
@@ -105,7 +97,7 @@ ENV PATH=/opt/conda/bin:$PATH \
     CONDA_PREFIX=/opt/conda
 
 # Text Generation Inference base env
-ENV HUGGINGFACE_HUB_CACHE=/data \
+ENV HUGGINGFACE_HUB_CACHE=/tmp \
     HF_HUB_ENABLE_HF_TRANSFER=1 \
     PORT=80
 
@@ -115,29 +107,30 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
         libssl-dev \
         ca-certificates \
         make \
+        vim \
+        curl \
+        git \
         && rm -rf /var/lib/apt/lists/*
 
 # Copy conda with PyTorch installed
 COPY --from=pytorch-install /opt/conda /opt/conda
 
-# Copy build artifacts from flash attention builder
-COPY --from=flash-att-builder /usr/src/flash-attention/build/lib.linux-x86_64-cpython-39 /opt/conda/lib/python3.9/site-packages
-COPY --from=flash-att-builder /usr/src/flash-attention/csrc/layer_norm/build/lib.linux-x86_64-cpython-39 /opt/conda/lib/python3.9/site-packages
-COPY --from=flash-att-builder /usr/src/flash-attention/csrc/rotary/build/lib.linux-x86_64-cpython-39 /opt/conda/lib/python3.9/site-packages
+# Install flash-attention dependencies
+RUN pip install einops --no-cache-dir
 
 # Install server
-COPY server/requirements.txt server/requirements.txt
-RUN cd server && pip install -r requirements.txt
-
 COPY proto proto
 COPY server server
 COPY server/Makefile server/Makefile
 RUN cd server && \
     make gen-server && \
-    pip install ".[bnb, accelerate]" --no-cache-dir
+    pip install -r requirements.txt && \
+    pip install git+https://github.com/UKPLab/sentence-transformers.git && \
+    pip install ".[bnb, accelerate, quantize]" --no-cache-dir
+    
 
 # Install benchmarker
-COPY --from=builder /usr/src/target/release/embedding-server-benchmark /usr/local/bin/text-generation-benchmark
+COPY --from=builder /usr/src/target/release/embedding-server-benchmark /usr/local/bin/embedding-server-benchmark
 # Install router
 COPY --from=builder /usr/src/target/release/embedding-server-router /usr/local/bin/embedding-server-router
 # Install launcher

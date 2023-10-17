@@ -1,4 +1,4 @@
-include Makefile-flash-att
+# include Makefile-flash-att
 
 unit-tests:
 	pytest -s -vv -m "not private" tests
