@@ -125,8 +125,8 @@ COPY server/Makefile server/Makefile
 RUN cd server && \
     make gen-server && \
     pip install -r requirements.txt && \
-    pip install git+https://github.com/UKPLab/sentence-transformers.git && \
-    pip install ".[bnb, accelerate, quantize]" --no-cache-dir
+    pip install git+https://github.com/UKPLab/sentence-transformers.git
+    # pip install ".[bnb, accelerate, quantize]" --no-cache-dir
     
 
 # Install benchmarker
