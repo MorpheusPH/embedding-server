@@ -380,7 +380,7 @@ pub async fn run(
         components(
             schemas(
                 Info,
-                CompatEmbedRequest,
+                // CompatEmbedRequest,
                 EmbedRequest,
                 EmbedResponse,
                 TokenCountResponse,

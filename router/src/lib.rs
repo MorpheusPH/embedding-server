@@ -56,29 +56,41 @@ pub struct Info {
     #[schema(nullable = true, example = "null")]
     pub docker_label: Option<&'static str>,
 }
+#[derive(Clone, Debug, Deserialize, ToSchema)]
+#[serde(untagged)]
+pub enum UnionRequest {
+    String(String),
+    Vec(String)
+}
 
+// #[derive(Clone, Debug, Deserialize, ToSchema)]
+// pub(crate) struct EmbedRequest {
+//     #[schema(example = "My name is Olivier and I")]
+//     pub inputs: String,
+// }
 #[derive(Clone, Debug, Deserialize, ToSchema)]
 pub(crate) struct EmbedRequest {
-    #[schema(example = "My name is Olivier and I")]
-    pub inputs: String,
+    #[schema(example = "[My name is Olivier and I]")]
+    pub inputs: UnionRequest,
 }
 
-#[derive(Clone, Debug, Deserialize, ToSchema)]
-pub(crate) struct CompatEmbedRequest {
-    #[schema(example = "My name is Olivier and I")]
-    pub inputs: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    pub stream: bool,
-}
 
-impl From<CompatEmbedRequest> for EmbedRequest {
-    fn from(req: CompatEmbedRequest) -> Self {
-        Self {
-            inputs: req.inputs,
-        }
-    }
-}
+// #[derive(Clone, Debug, Deserialize, ToSchema)]
+// pub(crate) struct CompatEmbedRequest {
+//     #[schema(example = "My name is Olivier and I")]
+//     pub inputs: String,
+//     #[serde(default)]
+//     #[allow(dead_code)]
+//     pub stream: bool,
+// }
+
+// impl From<CompatEmbedRequest> for EmbedRequest {
+//     fn from(req: CompatEmbedRequest) -> Self {
+//         Self {
+//             inputs: req.inputs,
+//         }
+//     }
+// }
 
 #[derive(Serialize, ToSchema)]
 pub(crate) struct EmbedResponse {
