@@ -108,7 +108,7 @@ async fn embed(
     let requests = (0..batch_size)
         .map(|id| Request {
             id: id.into(),
-            inputs: sequence.clone(),
+            inputs: vec![String::from(sequence.clone())],
             truncate: sequence_length,
         })
         .collect();

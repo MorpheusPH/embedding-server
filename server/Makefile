@@ -19,7 +19,7 @@ install-torch:
 install: gen-server install-torch
 	pip install pip --upgrade
 	pip install -r requirements.txt
-	pip install -e ".[bnb, accelerate]"
+	pip install -e .
 
 run-dev:
 	SAFETENSORS_FAST_GPU=1 python -m torch.distributed.run --nproc_per_node=2 embedding_server/cli.py serve all-MiniLM-L6-v2

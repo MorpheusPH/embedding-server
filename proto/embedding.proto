@@ -48,7 +48,7 @@ message Request {
     /// Request ID
     uint64 id = 1;
     /// The content to be embedded
-    string inputs = 2;
+    repeated string inputs = 2;
     /// Content truncation
     uint32 truncate = 3;
 }
@@ -73,7 +73,7 @@ message Execution {
     /// Request ID
     uint64 request_id = 1;
     /// Complete generated text
-    Embedding embedding = 2;
+    repeated Embedding embedding = 2;
 }
 
 message EmbedRequest {

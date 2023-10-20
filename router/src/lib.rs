@@ -56,12 +56,12 @@ pub struct Info {
     #[schema(nullable = true, example = "null")]
     pub docker_label: Option<&'static str>,
 }
-#[derive(Clone, Debug, Deserialize, ToSchema)]
-#[serde(untagged)]
-pub enum UnionRequest {
-    String(String),
-    Vec(String)
-}
+// #[derive(Clone, Debug, Deserialize, ToSchema)]
+// #[serde(untagged)]
+// pub enum UnionRequest {
+//     String(String),
+//     Vec(String)
+// }
 
 // #[derive(Clone, Debug, Deserialize, ToSchema)]
 // pub(crate) struct EmbedRequest {
@@ -70,8 +70,8 @@ pub enum UnionRequest {
 // }
 #[derive(Clone, Debug, Deserialize, ToSchema)]
 pub(crate) struct EmbedRequest {
-    #[schema(example = "[My name is Olivier and I]")]
-    pub inputs: UnionRequest,
+    #[schema(example = json!(["My name is Olivier and I"]))]
+    pub inputs: Vec<String>,
 }
 
 
@@ -107,9 +107,16 @@ pub(crate) struct TokenCountResponse {
 }
 
 #[derive(Serialize, ToSchema)]
+pub(crate) struct TokenIDs {
+    #[schema(example = "10")]
+    pub tokenids: Vec<u32>,
+}
+
+
+#[derive(Serialize, ToSchema)]
 pub(crate) struct TokenizeResponse {
     #[schema(example = "10")]
-    pub tokens: Vec<u32>,
+    pub tokens: Vec<TokenIDs>,
     pub count: usize,
 }
 

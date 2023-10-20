@@ -48,7 +48,8 @@ class SentenceTransformerBatch(Batch):
         # Parse batch
         for i, r in enumerate(pb.requests):
             requests_idx_mapping[r.id] = i
-            inputs.append(r.inputs)
+            # inputs.append(r.inputs)
+            inputs += r.inputs
 
         return cls(
             batch_id=pb.id,
@@ -75,6 +76,7 @@ class SentenceTransformerModel(Model):
             dtype = torch.float32
 
         model = SentenceTransformer(model_id, device=str(device), cache_folder=HUGGINGFACE_HUB_CACHE).to(dtype)
+        #self.pool = model.start_multi_process_pool(worker_num=2)
 
         super(SentenceTransformerModel, self).__init__(
             model=model,
@@ -103,28 +105,46 @@ class SentenceTransformerModel(Model):
     @tracer.start_as_current_span("embed")
     def embed(self, batch: SentenceTransformerBatch) -> List[Execution]:
         # use the native encode function from the generic sentence_transformers module
+
+        #embeddings = self.model.encode_multi_process(batch.input_texts, self.pool, batch_size=32, chunk_size=512)
         embeddings = self.model.encode(
             sentences=batch.input_texts,
-            batch_size=len(batch.input_texts),
+            batch_size=16,
             show_progress_bar=False,
-            convert_to_numpy=False,
-            convert_to_tensor=True,
+            convert_to_numpy=True,
+            convert_to_tensor=False,
             normalize_embeddings=False,
             device=str(self.device)
         )
-        assert embeddings.shape[0] == len(batch.requests)
-        embeddings = embeddings.cpu()
+        assert embeddings.shape[0] == len(batch.input_texts)
         dim = embeddings.shape[1]
+        #dim = len(embeddings[0])
+        # out = [
+        #     Execution(
+        #         request_id=req.id,
+        #         embedding=Embedding(
+        #             embedding=embeddings[i].tolist(),
+        #             dim=dim
+        #         )
+        #     )
+        #     for i, req in enumerate(batch.requests)
+        # ]
 
-        out = [
-            Execution(
-                request_id=req.id,
-                embedding=Embedding(
-                    embedding=embeddings[i].tolist(),
-                    dim=dim
+        out = []
+        offset = 0
+        for req in batch.requests:
+            gather_batch_embeddings = []
+            for embedding in embeddings[offset:offset+len(req.inputs)]:
+                gather_batch_embeddings.append(
+                    Embedding(
+                        embedding=embedding,
+                        dim=dim
+                    )
                 )
-            )
-            for i, req in enumerate(batch.requests)
-        ]
-
+            offset += len(req.inputs)
+            execution = Execution(
+                        request_id=req.id,
+                        embedding=gather_batch_embeddings
+                    )
+            out.append(execution)
         return out

@@ -52,7 +52,6 @@ class EmbeddingService(embedding_pb2_grpc.EmbeddingServiceServicer):
         )
 
         executions = self.model.embed(batch)
-
         return embedding_pb2.EmbedResponse(
             embeddings=[e.to_pb() for e in executions],
         )

@@ -45,10 +45,11 @@ class Embedding:
 @dataclass
 class Execution:
     request_id: int
-    embedding: Optional[Embedding]
+    embedding: Optional[List[Embedding]]
 
     def to_pb(self) -> embedding_pb2.Execution:
         return embedding_pb2.Execution(
             request_id=self.request_id,
-            embedding=self.embedding.to_pb() if self.embedding is not None else None,
+            # embedding=self.embedding.to_pb() if self.embedding is not None else None,
+            embedding=[embed.to_pb() if embed is not None else None for embed in self.embedding]
         )

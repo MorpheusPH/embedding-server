@@ -2,7 +2,8 @@ use crate::health::Health;
 /// HTTP Server logic
 use crate::infer::{InferError};
 use crate::{
-    CompatEmbedRequest, EmbedRequest, EmbedResponse, TokenCountResponse, ErrorResponse, HubModelInfo, Infer, Info,
+    // CompatEmbedRequest,
+    EmbedRequest, EmbedResponse, TokenCountResponse, ErrorResponse, HubModelInfo, Infer, Info,
     Validation, TokenizeResponse
 };
 use axum::extract::Extension;
@@ -141,12 +142,15 @@ async fn health(mut health: Extension<Health>) -> Result<(), (StatusCode, Json<E
 async fn embed(
     infer: Extension<Infer>,
     req: Json<EmbedRequest>,
-) -> Result<(HeaderMap, Json<EmbedResponse>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(HeaderMap, Json<Vec<EmbedResponse>>), (StatusCode, Json<ErrorResponse>)> {
     let span = tracing::Span::current();
     let start_time = Instant::now();
     metrics::increment_counter!("tgi_request_count");
 
-    let compute_characters = req.0.inputs.chars().count();
+    let mut compute_characters = 0;
+    for i in &(req.0.inputs) {
+        compute_characters = compute_characters + i.chars().count();
+    }
 
     // Inference
     let response = infer.embed(req.0).await?;
@@ -205,10 +209,20 @@ async fn embed(
     );
 
     // Send response
-    let res = EmbedResponse {
-        embedding: response.embedding.embedding,
-        dim: response.embedding.dim,
-    };
+    let mut res: Vec<EmbedResponse> = Vec::new();
+    for r in response.embedding {
+        res.push(
+            EmbedResponse {
+                embedding: r.embedding,
+                dim: r.dim,
+            }
+        )
+    }
+    // let res = EmbedResponse {
+    //     embedding: response.embedding.embedding,
+    //     dim: response.embedding.dim,
+    // };
+    tracing::info!("Success");
     Ok((headers, Json(res)))
 }
 
@@ -238,7 +252,11 @@ async fn token_count(
     let start_time = Instant::now();
     metrics::increment_counter!("tgi_tc_request_count");
 
-    let compute_characters = req.0.inputs.chars().count();
+    // let compute_characters = req.0.inputs.chars().count();
+    let mut compute_characters = 0;
+    for i in &(req.0.inputs) {
+        compute_characters = compute_characters + i.chars().count();
+    }
 
     // Inference
     let response = infer.token_count(req.0).await?;
@@ -302,7 +320,11 @@ async fn tokenize(
     let start_time = Instant::now();
     metrics::increment_counter!("tgi_tc_request_tokenize");
 
-    let compute_characters = req.0.inputs.chars().count();
+    // let compute_characters = req.0.inputs.chars().count();
+    let mut compute_characters = 0;
+    for i in &(req.0.inputs) {
+        compute_characters = compute_characters + i.chars().count();
+    }
 
     // Inference
     let response = infer.tokenize(req.0).await?;

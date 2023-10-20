@@ -87,18 +87,18 @@ impl Infer {
             })?;
 
         // Validate request
-        let valid_request = self.validation.validate(request).await.map_err(|err| {
-            metrics::increment_counter!("tgi_request_failure", "err" => "validation");
-            tracing::error!("{err}");
-            err
-        })?;
+        // let valid_request = self.validation.validate(request).await.map_err(|err| {
+        //     metrics::increment_counter!("tgi_request_failure", "err" => "validation");
+        //     tracing::error!("{err}");
+        //     err
+        // })?;
 
         // MPSC channel to communicate with the background batching task
         let (response_tx, response_rx) = flume::unbounded();
 
         // Append the request to the queue
         self.queue.append(Entry {
-            request: valid_request,
+            request: request.inputs,
             response_tx,
             span: Span::current(),
             temp_span: None,
@@ -241,10 +241,11 @@ fn send_responses(
     exec: Execution,
     entry: &Entry,
 ) -> Result<(), SendError<Result<InferResponse, InferError>>> {
-    if let Some(embeddings) = exec.embedding {
+    // if let Some(embeddings) = exec.embedding {
+    if !exec.embedding.is_empty() {
         // Send message
         entry.response_tx.send(Ok(InferResponse{
-            embedding: embeddings,
+            embedding: exec.embedding,
             // these are overridden on the receiver side
             queued: Instant::now(),
             start: Instant::now(),
@@ -278,7 +279,7 @@ fn send_errors(error: ClientError, entries: &mut IntMap<u64, Entry>) {
 
 #[derive(Debug)]
 pub(crate) struct InferResponse {
-    pub(crate) embedding: Embedding,
+    pub(crate) embedding: Vec<Embedding>,
     pub(crate) queued: Instant,
     pub(crate) start: Instant,
 }

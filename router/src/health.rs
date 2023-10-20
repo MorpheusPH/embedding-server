@@ -32,7 +32,7 @@ impl Health {
             // Dummy batch of 1 token and 1 generated token
             let liveness_request = Request {
                 id: LIVENESS_ID,
-                inputs: "liveness".to_string(),
+                inputs: vec![String::from("liveness")],
                 truncate: 10,
             };
             let batch = Batch {

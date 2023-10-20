@@ -1,7 +1,7 @@
 use flume::SendError;
 use crate::validation::ValidationError::{EmptyInput};
 /// Payload validation logic
-use crate::{EmbedRequest};
+use crate::{EmbedRequest, TokenIDs};
 use thiserror::Error;
 use tokenizers::tokenizer::Tokenizer;
 use tokenizers::Encoding;
@@ -17,6 +17,8 @@ pub struct Validation {
     /// Channel to communicate with the background tokenization task
     sender: Option<flume::Sender<TokenizerRequest>>,
 }
+
+
 
 impl Validation {
     pub(crate) fn new(
@@ -53,9 +55,9 @@ impl Validation {
     #[instrument(skip_all)]
     async fn validate_input(
         &self,
-        inputs: String,
+        inputs: Vec<String>,
         truncate: Option<usize>,
-    ) -> Result<(String, usize), ValidationError> {
+    ) -> Result<(Vec<String>, usize), ValidationError> {
         // If we have a fast tokenizer
         if let Some(sender) = &self.sender {
             // Create response channel
@@ -68,13 +70,13 @@ impl Validation {
 
             // Await on response channel
             // Unwrap is safe here
-            let (inputs, _, input_length) = response_receiver.await.unwrap()?;
+            let (inputs, _, input_length, request_max_input_length) = response_receiver.await.unwrap()?;
 
             // Validate InputLength
-            if input_length > self.max_input_length {
+            if request_max_input_length > self.max_input_length {
                 return Err(ValidationError::InputLength(
                     self.max_input_length,
-                    input_length,
+                    request_max_input_length,
                 ));
             }
 
@@ -95,7 +97,7 @@ impl Validation {
     #[instrument(skip_all)]
     pub(crate) async fn token_count(
         &self,
-        inputs: String,
+        inputs: Vec<String>,
     ) -> Result<usize, ValidationError> {
         // If we have a fast tokenizer
         if let Some(sender) = &self.sender {
@@ -109,7 +111,7 @@ impl Validation {
 
             // Await on response channel
             // Unwrap is safe here
-            let (_, _, input_length) = response_receiver.await.unwrap()?;
+            let (_, _, input_length, _) = response_receiver.await.unwrap()?;
 
             metrics::histogram!("tgi_request_input_length", input_length as f64);
             Ok(input_length)
@@ -123,8 +125,9 @@ impl Validation {
     #[instrument(skip_all)]
     pub(crate) async fn tokenize(
         &self,
-        inputs: String,
-    ) -> Result<(Vec<u32>, usize), ValidationError> {
+        inputs: Vec<String>,
+    ) -> Result<(Vec<TokenIDs>, usize), ValidationError> {
+        let mut encodings: Vec<TokenIDs> = Vec::new();
         // If we have a fast tokenizer
         if let Some(sender) = &self.sender {
             // Create response channel
@@ -137,10 +140,13 @@ impl Validation {
 
             // Await on response channel
             // Unwrap is safe here
-            let (_, encoding, input_length) = response_receiver.await.unwrap()?;
+            let (_, encoding, input_length, _) = response_receiver.await.unwrap()?;
 
             metrics::histogram!("tgi_request_input_length", input_length as f64);
-            Ok((encoding.get_ids().to_vec(), input_length))
+            for e in encoding {
+                encodings.push(TokenIDs { tokenids: e.get_ids().to_vec() })
+            }
+            Ok((encodings, input_length))
         }
         // Return 0 to signify that we can't perform this op
         else {
@@ -185,42 +191,52 @@ fn tokenizer_worker(tokenizer: Tokenizer, receiver: flume::Receiver<TokenizerReq
 
 /// Get input length and optionally truncate it
 fn prepare_input(
-    inputs: String,
+    inputs: Vec<String>,
     truncate: Option<usize>,
     tokenizer: &Tokenizer,
-) -> Result<(String, Encoding, usize), ValidationError> {
+) -> Result<(Vec<String>, Vec<Encoding>, usize, usize), ValidationError> {
     // Get the number of tokens in the input
-    let mut encoding = tokenizer
-        .encode(inputs.clone(), true)
-        .map_err(|err| ValidationError::Tokenizer(err.to_string()))?;
+    let mut final_inputs: Vec<String> = Vec::new();
+    let mut encodings: Vec<Encoding> = Vec::new();
+    let mut total_input_length = 0;
+    let mut max_request_input_length = 0;
+    for i in inputs {
+        let mut encoding = tokenizer
+            .encode(i.clone(), true)
+            .map_err(|err| ValidationError::Tokenizer(err.to_string()))?;
 
-    // Optionally truncate
-    let (inputs, encoding, input_length) = match truncate {
-        // Truncate is some and < encoding length
-        Some(truncate) if truncate < encoding.len() => {
-            // truncate encoding and decode new inputs
-            encoding.truncate(truncate, 0, TruncationDirection::Left);
-            let inputs = tokenizer
-                .decode(encoding.get_ids(), false)
-                .map_err(|err| ValidationError::Tokenizer(err.to_string()))?;
-            (inputs, encoding.clone(), encoding.len())
-        }
-        // Nothing to do
-        _ => (inputs, encoding.clone(), encoding.len()),
-    };
+        // Optionally truncate
+        let (input, encoding, input_length) = match truncate {
+            // Truncate is some and < encoding length
+            Some(truncate) if truncate < encoding.len() => {
+                // truncate encoding and decode new inputs
+                encoding.truncate(truncate, 0, TruncationDirection::Left);
+                let new_input = tokenizer
+                    .decode(encoding.get_ids(), false)
+                    .map_err(|err| ValidationError::Tokenizer(err.to_string()))?;
+                (new_input, encoding.clone(), encoding.len())
+            }
+            // Nothing to do
+            _ => (i, encoding.clone(), encoding.len()),
+        };
+        final_inputs.push(input);
+        encodings.push(encoding);
+        total_input_length = total_input_length + input_length;
+        max_request_input_length = std::cmp::max(max_request_input_length, input_length)
+    }
 
-    Ok((inputs, encoding, input_length))
+    Ok((final_inputs, encodings, total_input_length, max_request_input_length))
 }
 
 type TokenizerRequest = (
-    (String, Option<usize>),
-    oneshot::Sender<Result<(String, Encoding, usize), ValidationError>>,
+    (Vec<String>, Option<usize>),
+    oneshot::Sender<Result<(Vec<String>, Vec<Encoding>, usize, usize), ValidationError>>,
     Span,
 );
 
 #[derive(Debug)]
 pub(crate) struct ValidEmbedRequest {
-    pub inputs: String,
+    pub inputs: Vec<String>,
     pub input_length: u32,
 }
 
@@ -275,10 +291,10 @@ mod tests {
         );
 
         let val1 = validation
-            .token_count("Hello this is a long message with too many tokens".to_string());
+            .token_count(["Hello this is a long message with too many tokens".to_string()]);
 
         let val2 = validation
-            .token_count("Hello this is a long message with too many tokens actually too many tokens".to_string());
+            .token_count(["Hello this is a long message with too many tokens actually too many tokens".to_string()]);
 
         match val1.await {
             Ok(10) => (),

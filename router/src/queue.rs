@@ -11,7 +11,7 @@ use tracing::{info_span, instrument, Span};
 #[derive(Debug)]
 pub(crate) struct Entry {
     /// Request
-    pub request: ValidEmbedRequest,
+    pub request: Vec<String>,
     /// Response sender to communicate between the Infer struct and the batching_task
     pub response_tx: flume::Sender<Result<InferResponse, InferError>>,
     /// Span that will live as long as entry
@@ -155,9 +155,8 @@ impl State {
         let mut batch_entries =
             IntMap::with_capacity_and_hasher(self.entries.len(), BuildNoHashHasher::default());
 
-        let mut max_input_length = 0;
-        let mut prefill_tokens: u32 = 0;
-
+        // let mut max_input_length = 0;
+        // let mut prefill_tokens: u32 = 0;
         // Pop entries starting from the front of the queue
         while let Some((id, mut entry)) = self.entries.pop_front() {
             // Filter entries where the response receiver was dropped (== entries where the request
@@ -178,14 +177,14 @@ impl State {
             // }
 
             // TODO: Remove when we dd back router-side padding
-            prefill_tokens += entry.request.input_length;
+            // prefill_tokens += entry.request.input_length;
 
-            if prefill_tokens > token_budget {
-                // Entry is over budget
-                // Add it back to the front
-                self.entries.push_front((id, entry));
-                break;
-            }
+            // if prefill_tokens > token_budget {
+            //     // Entry is over budget
+            //     // Add it back to the front
+            //     self.entries.push_front((id, entry));
+            //     break;
+            // }
 
             // Create a new span to link the batch back to this entry
             let entry_batch_span = info_span!(parent: &entry.span, "infer");
@@ -194,10 +193,9 @@ impl State {
             entry_batch_span.follows_from(&next_batch_span);
             // Update entry
             entry.temp_span = Some(entry_batch_span);
-
             batch_requests.push(Request {
                 id,
-                inputs: entry.request.inputs.clone(),
+                inputs: entry.request.clone(),
                 truncate: 0,
             });
             // Set batch_time
@@ -239,7 +237,6 @@ impl State {
         self.next_batch_id += 1;
 
         metrics::histogram!("tgi_batch_next_size", batch.size as f64);
-
         Some((batch_entries, batch, next_batch_span))
     }
 }
