@@ -76,7 +76,6 @@ class SentenceTransformerModel(Model):
             dtype = torch.float32
 
         model = SentenceTransformer(model_id, device=str(device), cache_folder=HUGGINGFACE_HUB_CACHE).to(dtype)
-        #self.pool = model.start_multi_process_pool(worker_num=2)
 
         super(SentenceTransformerModel, self).__init__(
             model=model,
