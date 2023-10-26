@@ -93,11 +93,17 @@ pub(crate) struct EmbedRequest {
 // }
 
 #[derive(Serialize, ToSchema)]
-pub(crate) struct EmbedResponse {
-    #[schema(example = "test")]
+pub(crate) struct EmbedInfo {
+    #[schema(example = json!([0.1]))]
     pub embedding: Vec<f32>,
-    #[schema(example = 768)]
+    #[schema(example = 1)]
     pub dim: u32,
+}
+
+#[derive(Serialize, ToSchema)]
+pub(crate) struct EmbedResponse {
+    #[schema(example = json!([{"dim":1,"embedding":["0.1"]}]))]
+    pub embeddings: Vec<EmbedInfo>,
 }
 
 #[derive(Serialize, ToSchema)]

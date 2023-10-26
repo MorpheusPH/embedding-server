@@ -3,7 +3,7 @@ use crate::health::Health;
 use crate::infer::{InferError};
 use crate::{
     // CompatEmbedRequest,
-    EmbedRequest, EmbedResponse, TokenCountResponse, ErrorResponse, HubModelInfo, Infer, Info,
+    EmbedRequest, EmbedInfo, EmbedResponse, TokenCountResponse, ErrorResponse, HubModelInfo, Infer, Info,
     Validation, TokenizeResponse
 };
 use axum::extract::Extension;
@@ -21,6 +21,7 @@ use tokenizers::Tokenizer;
 use tokio::signal;
 use tokio::time::Instant;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+// use tower_http::compression::{CompressionLayer};
 use tracing::{instrument};
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
@@ -142,7 +143,7 @@ async fn health(mut health: Extension<Health>) -> Result<(), (StatusCode, Json<E
 async fn embed(
     infer: Extension<Infer>,
     req: Json<EmbedRequest>,
-) -> Result<(HeaderMap, Json<Vec<EmbedResponse>>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(HeaderMap, Json<EmbedResponse>), (StatusCode, Json<ErrorResponse>)> {
     let span = tracing::Span::current();
     let start_time = Instant::now();
     metrics::increment_counter!("tgi_request_count");
@@ -209,19 +210,18 @@ async fn embed(
     );
 
     // Send response
-    let mut res: Vec<EmbedResponse> = Vec::new();
+    let mut embedResponses: Vec<EmbedInfo> = Vec::new();
     for r in response.embedding {
-        res.push(
-            EmbedResponse {
+        embedResponses.push(
+            EmbedInfo {
                 embedding: r.embedding,
                 dim: r.dim,
             }
         )
     }
-    // let res = EmbedResponse {
-    //     embedding: response.embedding.embedding,
-    //     dim: response.embedding.dim,
-    // };
+    let res = EmbedResponse {
+        embeddings: embedResponses
+    };
     tracing::info!("Success");
     Ok((headers, Json(res)))
 }
@@ -404,6 +404,7 @@ pub async fn run(
                 Info,
                 // CompatEmbedRequest,
                 EmbedRequest,
+                EmbedInfo,
                 EmbedResponse,
                 TokenCountResponse,
                 ErrorResponse,
@@ -515,6 +516,7 @@ pub async fn run(
         .layer(Extension(infer))
         .layer(Extension(prom_handle))
         .layer(opentelemetry_tracing_layer())
+        // .layer(CompressionLayer::new())
         .layer(cors_layer);
 
     // Run server

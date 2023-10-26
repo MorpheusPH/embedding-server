@@ -34,7 +34,7 @@ serde_json = "1.0.93"
 thiserror = "1.0.38"
 tokenizers = "0.13.3"
 tokio = { version = "1.25.0", features = ["rt", "rt-multi-thread", "parking_lot", "signal", "sync"] }
-tower-http = { version = "0.4.0", features = ["cors"] }
+tower-http = { version = "0.4.4", features = ["cors", "decompression-gzip", "compression-gzip"] }
 tracing = "0.1.37"
 tracing-opentelemetry = "0.18.0"
 tracing-subscriber = { version = "0.3.16", features = ["json", "env-filter"] }
